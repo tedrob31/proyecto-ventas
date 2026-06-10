@@ -1,0 +1,34 @@
+version: "3.7"
+services:
+
+## --------------------------- FRONTEND (Next.js) --------------------------- ##
+  frontend:
+    image: ghcr.io/${GITHUB_USER:-tu_usuario}/ventas-app:main
+    networks:
+      - traefik_net
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=traefik_net
+        
+        # Router para el dominio principal
+        - "traefik.http.routers.ventas-app.rule=Host(`${DOMAIN_NAME:-ventas.tudominio.com}`)"
+        - "traefik.http.routers.ventas-app.entrypoints=websecure"
+        - "traefik.http.routers.ventas-app.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.ventas-app.service=ventas-app"
+        - "traefik.http.services.ventas-app.loadbalancer.server.port=3000"
+
+## --------------------------- NETWORKS --------------------------- ##
+networks:
+  traefik_net:
+    external: true
+    name: ${TRAEFIK_NETWORK:-r4tlabsnet}
