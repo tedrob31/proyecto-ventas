@@ -1,7 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder_key';
+const getEnvVar = (key: string) => {
+  if (typeof window !== 'undefined') {
+    // Modo cliente: lee desde la ventana (inyectado por layout.tsx)
+    return (window as any).__ENV?.[key] || '';
+  }
+  // Modo servidor
+  return process.env[key] || '';
+};
+
+const supabaseUrl = getEnvVar('SUPABASE_URL');
+const supabaseAnonKey = getEnvVar('SUPABASE_ANON_KEY');
 
 // Usamos el cliente anónimo para operaciones seguras
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co', 
+  supabaseAnonKey || 'placeholder_key'
+);
