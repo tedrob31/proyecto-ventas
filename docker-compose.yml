@@ -3,7 +3,7 @@ services:
 
 ## --------------------------- FRONTEND (Next.js) --------------------------- ##
   frontend:
-    image: ghcr.io/${GITHUB_USER:-tu_usuario}/ventas-app:main
+    image: ghcr.io/tedrob31/proyecto-ventas:main
     networks:
       - traefik_net
     environment:
