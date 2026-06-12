@@ -496,7 +496,7 @@ export const useStore = create<StoreState>()(
           usuario_id: log.userId,
           nombre_usuario: log.nombre,
           // ip: log.ip, // Eliminado de Supabase
-          status: log.status,
+          // status: log.status, // Eliminado de Supabase
           fecha: log.timestamp
         }]);
       },
