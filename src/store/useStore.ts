@@ -495,7 +495,7 @@ export const useStore = create<StoreState>()(
           id: log.id,
           usuario_id: log.userId,
           nombre_usuario: log.nombre,
-          ip: log.ip,
+          // ip: log.ip, // Eliminado de Supabase
           status: log.status,
           fecha: log.timestamp
         }]);
@@ -508,7 +508,7 @@ export const useStore = create<StoreState>()(
             id: d.id,
             userId: d.usuario_id || '',
             nombre: d.nombre_usuario,
-            ip: d.ip || 'Desconocida',
+            ip: 'Oculta', // Ya no existe en DB
             status: (d.status as 'success' | 'blocked') || 'success',
             timestamp: d.fecha
           }));
