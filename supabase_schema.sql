@@ -1,8 +1,9 @@
 -- ==========================================
 -- SCRIPT DE BASE DE DATOS COMPLETO - STOCKPREMIUM
 -- ==========================================
--- Copia y pega este código en el SQL Editor de Supabase
--- para crear (o restaurar) TODA la estructura de tu base de datos.
+-- Esquema consolidado y sincronizado con la base de datos de producción.
+-- Incluye: usuarios, login_logs, productos, metas, meta_tiers, ventas,
+-- venta_detalles, ranking_historial y reportes_mensuales.
 
 -- ==========================================
 -- 1. TABLA DE USUARIOS
@@ -16,6 +17,7 @@ CREATE TABLE IF NOT EXISTS public.usuarios (
   estado text NOT NULL DEFAULT 'activo',
   meta_id uuid NULL,
   fecha_creacion timestamp with time zone NULL DEFAULT now(),
+  created_at timestamp with time zone NULL DEFAULT now(),
   CONSTRAINT usuarios_pkey PRIMARY KEY (id)
 ) TABLESPACE pg_default;
 
@@ -26,11 +28,9 @@ CREATE TABLE IF NOT EXISTS public.login_logs (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   usuario_id uuid NULL,
   nombre_usuario text NOT NULL,
-  ip text NULL,
-  status text NULL,
   fecha timestamp with time zone NULL DEFAULT now(),
   CONSTRAINT login_logs_pkey PRIMARY KEY (id),
-  CONSTRAINT login_logs_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES usuarios (id) ON DELETE CASCADE
+  CONSTRAINT login_logs_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES public.usuarios (id) ON DELETE CASCADE
 ) TABLESPACE pg_default;
 
 -- ==========================================
@@ -57,8 +57,8 @@ CREATE TABLE IF NOT EXISTS public.metas (
   name text NOT NULL,
   metric text NOT NULL, -- 'ordenes', 'prendas', 'monto'
   target numeric NOT NULL DEFAULT 0,
-  mes integer NOT NULL, -- 0 para Enero, 11 para Diciembre
-  anio integer NOT NULL,
+  mes integer NOT NULL DEFAULT (extract(month from now())::integer - 1),
+  anio integer NOT NULL DEFAULT (extract(year from now())::integer),
   is_active boolean NOT NULL DEFAULT true,
   has_tiers boolean NOT NULL DEFAULT false,
   CONSTRAINT metas_pkey PRIMARY KEY (id)
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS public.meta_tiers (
   name text NOT NULL,
   target numeric NOT NULL DEFAULT 0,
   CONSTRAINT meta_tiers_pkey PRIMARY KEY (id),
-  CONSTRAINT meta_tiers_meta_id_fkey FOREIGN KEY (meta_id) REFERENCES metas (id) ON DELETE CASCADE
+  CONSTRAINT meta_tiers_meta_id_fkey FOREIGN KEY (meta_id) REFERENCES public.metas (id) ON DELETE CASCADE
 ) TABLESPACE pg_default;
 
 -- ==========================================
@@ -103,16 +103,16 @@ CREATE TABLE IF NOT EXISTS public.venta_detalles (
   costo_aplicado numeric NOT NULL DEFAULT 0,
   subtotal numeric NOT NULL DEFAULT 0,
   CONSTRAINT venta_detalles_pkey PRIMARY KEY (id),
-  CONSTRAINT venta_detalles_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas (id) ON DELETE CASCADE,
-  CONSTRAINT venta_detalles_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos (id) ON DELETE RESTRICT
+  CONSTRAINT venta_detalles_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES public.ventas (id) ON DELETE CASCADE,
+  CONSTRAINT venta_detalles_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES public.productos (id) ON DELETE RESTRICT
 ) TABLESPACE pg_default;
 
 -- ==========================================
--- 7. TABLA DE HISTORIAL DE RANKING (NUEVA)
+-- 7. TABLA DE HISTORIAL DE RANKING
 -- ==========================================
 CREATE TABLE IF NOT EXISTS public.ranking_historial (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
-  mes integer NOT NULL, -- 0 para Enero, 11 para Diciembre
+  mes integer NOT NULL,
   anio integer NOT NULL,
   asesora_nombre text NOT NULL,
   prendas integer NOT NULL DEFAULT 0,
@@ -124,9 +124,22 @@ CREATE TABLE IF NOT EXISTS public.ranking_historial (
 ) TABLESPACE pg_default;
 
 -- ==========================================
--- SEGURIDAD BÁSICA: DESACTIVAR RLS TEMPORALMENTE O PERMITIR TODO 
+-- 8. TABLA DE REPORTES MENSUALES (ROLLUP)
 -- ==========================================
--- Si prefieres usar RLS pero permitir todo mientras desarrollas:
+CREATE TABLE IF NOT EXISTS public.reportes_mensuales (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  mes integer NOT NULL,
+  anio integer NOT NULL,
+  ingresos numeric NOT NULL DEFAULT 0,
+  ganancia_neta numeric NOT NULL DEFAULT 0,
+  prendas_vendidas integer NOT NULL DEFAULT 0,
+  ordenes integer NOT NULL DEFAULT 0,
+  CONSTRAINT reportes_mensuales_pkey PRIMARY KEY (id)
+) TABLESPACE pg_default;
+
+-- ==========================================
+-- SEGURIDAD: ROW LEVEL SECURITY (RLS)
+-- ==========================================
 ALTER TABLE public.usuarios ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.login_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.productos ENABLE ROW LEVEL SECURITY;
@@ -135,12 +148,42 @@ ALTER TABLE public.meta_tiers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ventas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.venta_detalles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ranking_historial ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reportes_mensuales ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Enable all for usuarios" ON public.usuarios FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Enable all for login_logs" ON public.login_logs FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Enable all for productos" ON public.productos FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Enable all for metas" ON public.metas FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Enable all for meta_tiers" ON public.meta_tiers FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Enable all for ventas" ON public.ventas FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Enable all for venta_detalles" ON public.venta_detalles FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Enable all for ranking_historial" ON public.ranking_historial FOR ALL USING (true) WITH CHECK (true);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'usuarios' AND policyname = 'Enable all for usuarios') THEN
+    CREATE POLICY "Enable all for usuarios" ON public.usuarios FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'login_logs' AND policyname = 'Enable all for login_logs') THEN
+    CREATE POLICY "Enable all for login_logs" ON public.login_logs FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'productos' AND policyname = 'Enable all for productos') THEN
+    CREATE POLICY "Enable all for productos" ON public.productos FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'metas' AND policyname = 'Enable all for metas') THEN
+    CREATE POLICY "Enable all for metas" ON public.metas FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'meta_tiers' AND policyname = 'Enable all for meta_tiers') THEN
+    CREATE POLICY "Enable all for meta_tiers" ON public.meta_tiers FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'ventas' AND policyname = 'Enable all for ventas') THEN
+    CREATE POLICY "Enable all for ventas" ON public.ventas FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'venta_detalles' AND policyname = 'Enable all for venta_detalles') THEN
+    CREATE POLICY "Enable all for venta_detalles" ON public.venta_detalles FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'ranking_historial' AND policyname = 'Enable all for ranking_historial') THEN
+    CREATE POLICY "Enable all for ranking_historial" ON public.ranking_historial FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'reportes_mensuales' AND policyname = 'Enable all for reportes_mensuales') THEN
+    CREATE POLICY "Enable all for reportes_mensuales" ON public.reportes_mensuales FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+END $$;
+
+-- ==========================================
+-- USUARIO ADMINISTRADOR INICIAL
+-- ==========================================
+INSERT INTO public.usuarios (nombre, pin, rol, celular, estado)
+VALUES ('admin', '1234', 'admin', '999999999', 'activo')
+ON CONFLICT DO NOTHING;
